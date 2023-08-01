@@ -1,0 +1,56 @@
+name: Check for pending translations
+description: Uses pylupdate to check the repository's code for pending translations.
+inputs:
+    pro-file:
+        description: Pro file to extract the translation files
+        required: true 
+    python-version:
+        description: Python version to use, defaults to 3.9.17
+        default: 3.9.17
+runs:
+    using: composite
+    steps:
+        - uses: actions/checkout@v3
+        - uses: actions/setup-python@v4
+          with:
+            python-version: ${{ inputs.python-version }}
+        - run: pip install -r requirements.txt
+          shell: bash
+
+        - run: |
+            for filename in $(grep -o [A-Za-z_/]*.ts ${{ inputs.pro-file }}) ;
+            do
+                echo "Checking $filename"
+                cp $filename ${filename}_bak                
+                /opt/hostedtoolcache/Python/${{ inputs.python-version }}/x64/bin/pylupdate5 -verbose -noobsolete ./${{ inputs.pro-file }}
+
+                echo "Comparing files - exit code 1 if new strings exists"
+                if cmp -s $filename ${filename}_bak ; then
+                    echo "Everything fine"
+
+                    echo "Removing ${filename}_bak"
+                    rm ${filename}_bak
+                else
+                    echo "New translations"
+
+                    echo "Removing ${filename}_bak"
+                    rm ${filename}_bak
+
+                    echo "::error ::There are new strings waiting for translation."
+                    exit 1  
+                fi
+                echo ""
+            done
+          shell: bash
+
+        - run: |
+            for filename in $(grep -o [A-Za-z_/]*.ts ${{ inputs.pro-file }}) ;
+            do
+                echo "Checking $filename"
+                if grep -cq "<translation type=\"unfinished\"></translation>" $filename ; then
+                    echo "::notice ::Pending translations"
+                else
+                    echo "Everything fine"
+                fi
+            done
+          shell: bash
